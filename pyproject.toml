@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "rincewrite"
+version = "0.1.0"
+description = "Wizardly writing assistant"
+license = "Apache 2.0"
+authors = ["Pierre Guirriec <pierre.guirriec@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+reflex = "^0.5.6"
+langgraph = "^0.1.5"
+langchain-openai = "^0.1.14"
+langchainhub = "^0.1.20"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
