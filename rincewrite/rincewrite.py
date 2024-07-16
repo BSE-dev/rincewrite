@@ -6,7 +6,7 @@ from typing_extensions import TypedDict
 from PIL import Image  # type: ignore
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.aiosqlite import AsyncSqliteSaver
 from langchain_openai import ChatOpenAI
 from langchain import hub
 from langchain_core.messages.base import BaseMessage
@@ -44,9 +44,9 @@ _welcome_prompt = hub.pull("rincewrite-welcome")
 _welcome_chain = _welcome_prompt | model
 
 
-def _welcome(state: GraphState) -> dict[str, Any]:
+async def _welcome(state: GraphState) -> dict[str, Any]:
 
-    welcome_msg = _welcome_chain.invoke({
+    welcome_msg = await _welcome_chain.ainvoke({
         "piece_name":   state["piece_name"],
         "piece_desc":   state["piece_desc"],
         "user_name":    state["user_name"],
@@ -68,14 +68,15 @@ _chat_prompt = hub.pull("rincewrite-chat")
 _chat_chain = _chat_prompt | model
 
 
-def _chat(state: GraphState) -> dict[str, Any]:
+async def _chat(state: GraphState) -> dict[str, Any]:
 
-    chat_msg = _chat_chain.invoke(state["messages"])
+    chat_msg = await _chat_chain.ainvoke(state["messages"])
 
     return {"messages": [chat_msg]}
 
 
-memory = SqliteSaver.from_conn_string(":memory:")
+# memory = SqliteSaver.from_conn_string(":memory:")
+memory = AsyncSqliteSaver.from_conn_string(":memory:")
 
 graph_builder = StateGraph(GraphState)
 graph_builder.add_node("welcome", _welcome)
@@ -147,45 +148,45 @@ class RWState(rx.State):  # type: ignore
         #     config)
         # # do something
 
-        # stream State
-        for event in graph.stream({
-                "piece_name":   self._piece_name,
-                "piece_desc":   self._piece_desc,
-                "user_name":    self._user_name,
-                "user_desc":    self._user_desc,
-                "messages":     [], },
-                config):
-            for value in event.values():
-                self.messages.append({
-                    'type': value["messages"][-1].type,
-                    'msg': value["messages"][-1].content,
-                })
-                yield
+        # # stream State
+        # for event in graph.stream({
+        #         "piece_name":   self._piece_name,
+        #         "piece_desc":   self._piece_desc,
+        #         "user_name":    self._user_name,
+        #         "user_desc":    self._user_desc,
+        #         "messages":     [], },
+        #         config):
+        #     for value in event.values():
+        #         self.messages.append({
+        #             'type': value["messages"][-1].type,
+        #             'msg': value["messages"][-1].content,
+        #         })
+        #         yield
 
-        # # stream LLM tokens
-        # self.messages.append({
-        #     'type': "ai",
-        #     'msg': "",
-        # })
-        # async for event in graph.astream_events(
-        #     {"piece_name":  self._piece_name,
-        #      "piece_desc":  self._piece_desc,
-        #      "user_name":   self._user_name,
-        #      "user_desc":   self._user_desc,
-        #      "messages":    [], },
-        #     config,
-        #     version="v2"
-        # ):
-        #     kind = event["event"]
-        #     # emitted for each streamed token
-        #     if kind == "on_chat_model_stream":
-        #         content = event["data"]["chunk"].content
-        #         # only display non-empty content (not tool calls)
-        #         if content:
-        #             self.messages[-1]["msg"] += content
-        #             yield
+        # stream LLM tokens
+        self.messages.append({
+            'type': "ai",
+            'msg': "",
+        })
+        async for event in graph.astream_events(
+            {"piece_name":  self._piece_name,
+             "piece_desc":  self._piece_desc,
+             "user_name":   self._user_name,
+             "user_desc":   self._user_desc,
+             "messages":    [], },
+            config,
+            version="v2"
+        ):
+            kind = event["event"]
+            # emitted for each streamed token
+            if kind == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                # only display non-empty content (not tool calls)
+                if content:
+                    self.messages[-1]["msg"] += content
+                    yield
 
-    async def handle_user_mesg_submit(
+    async def handle_user_msg_submit(
         self,
         data: dict[str, Any]
     ) -> AsyncGenerator[None, None]:
@@ -193,18 +194,36 @@ class RWState(rx.State):  # type: ignore
         yield
         config = RunnableConfig({"configurable": {"thread_id": "1"}})
         # manually update graph state
-        graph.update_state(
+        await graph.aupdate_state(
             config,
             {"messages": [data["text_area_input"]]},
             as_node="user_action")
-        # resume graph execution and stream state
-        for event in graph.stream(None, config):
-            for value in event.values():
-                self.messages.append({
-                    'type': value["messages"][-1].type,
-                    'msg': value["messages"][-1].content,
-                })
-                yield
+        # # resume graph execution and stream state
+        # for event in graph.stream(None, config):
+        #     for value in event.values():
+        #         self.messages.append({
+        #             'type': value["messages"][-1].type,
+        #             'msg': value["messages"][-1].content,
+        #         })
+        #         yield
+        # resume graph execution and stream LLM tokens
+        self.messages.append({
+            'type': "ai",
+            'msg': "",
+        })
+        async for event in graph.astream_events(
+            None,
+            config,
+            version="v2"
+        ):
+            kind = event["event"]
+            # emitted for each streamed token
+            if kind == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                # only display non-empty content (not tool calls)
+                if content:
+                    self.messages[-1]["msg"] += content
+                    yield
 
 
 def welcome_dialog() -> rx.Component:
@@ -356,7 +375,7 @@ def draft_area() -> rx.Component:
             rx.form(
                 rx.vstack(
                     rx.text_area(
-                        placeholder="Type here...",
+                        placeholder="Work from here...",
                         name="text_area_input",
                         width="100%",
                         height="100%",
@@ -375,7 +394,7 @@ def draft_area() -> rx.Component:
                 ),
                 width="95%",
                 height="39%",
-                on_submit=RWState.handle_user_mesg_submit,
+                on_submit=RWState.handle_user_msg_submit,
                 reset_on_submit=True,
             ),
             spacing="3",
@@ -428,13 +447,20 @@ def app_content() -> rx.Component:
         rx.box(
             rx.center(
                 rx.scroll_area(
-                    rx.markdown(
-                        RWState.renderer_content,
+                    rx.center(
+                        rx.markdown(
+                            RWState.renderer_content,
+                            width="98%",
+                            bg="green",
+                        ),
+                        width="100%",
+                        height="100%",
                     ),
                     type="always",
                     scrollbars="vertical",
                     width="95%",
                     height="90%",
+                    bg="yellow",
                 ),
                 width="100%",
                 height="100%",
