@@ -119,11 +119,11 @@ class RWState(rx.State):  # type: ignore
     user_name: str = rx.LocalStorage(name="user_name")
     user_desc: str = rx.LocalStorage(name="user_desc")
 
-    def handle_user_submit(self, data: dict[str, Any]) -> None:
+    def handle_user_submit(self) -> None:
         self.user_form_submitted = True
 
     async def welcome(
-        self, data: dict[str, Any]
+        self
     ) -> AsyncGenerator[None, None]:
         self.show_dialog = False
         yield
@@ -260,15 +260,16 @@ def welcome_dialog(self) -> rx.Component:
                                 on_change=self.set_user_desc
                             ),
                             rx.dialog.close(
-                                rx.button("truly begin now", type="submit"),),
+                                rx.button("begin", type="submit"),),
                             spacing="3",
                             justify="center",
                             align="center",
                         ),
                         on_submit=RWState.handle_user_submit,
-                        #  for some reason, Reflex will serve the form data to
-                        #  the alternative one ('piece' form) if reset_on_submit
-                        #  is not set
+                        #  for some reason,
+                        #  Reflex will serve the form data to
+                        #  the alternative one ('piece' form)
+                        #  if reset_on_submit is not set
                         reset_on_submit=True,
                     ),
                     rx.form(
@@ -295,7 +296,7 @@ def welcome_dialog(self) -> rx.Component:
                                 value=self.piece_desc,
                                 on_change=self.set_piece_desc
                             ),
-                            rx.button("begin", type="submit"),
+                            rx.button("truly begin now", type="submit"),
                             spacing="3",
                             justify="center",
                             align="center",
