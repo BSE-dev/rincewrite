@@ -3,4 +3,5 @@
 .env
 .web
 __pycache__/
-.env
+assets/external/
+
