@@ -31,11 +31,10 @@ the rest along the way, together."
 
 
 class GraphState(TypedDict):
-
-    piece_name: str
-    piece_desc: str
     user_name: str
     user_desc: str
+    piece_name: str
+    piece_desc: str
     messages: Annotated[list[BaseMessage], add_messages]
 
 
@@ -101,7 +100,7 @@ class RWState(rx.State):  # type: ignore
     """The app state."""
     # intro dialog
     show_dialog: bool = True
-    piece_form_submitted: bool = False
+    user_form_submitted: bool = False
     # main app col 1/3 : chat / workzone
     messages: list[dict[str, str]] = []
     service_button: str = "answer"  # proposed service will be situational
@@ -115,25 +114,21 @@ class RWState(rx.State):  # type: ignore
     renderer_content: str = ""
 
     # backend state
-    _piece_name: str = ""
-    _piece_desc: str = ""
-    _user_name: str = ""
-    _user_desc: str = ""
+    piece_name: str = rx.LocalStorage(name="piece_name")
+    piece_desc: str = rx.LocalStorage(name="piece_desc")
+    user_name: str = rx.LocalStorage(name="user_name")
+    user_desc: str = rx.LocalStorage(name="user_desc")
 
-    def handle_piece_submit(self, data: dict[str, Any]) -> None:
-        self._piece_name = data["piece_name"]
-        self._piece_desc = data["piece_desc"]
-        self.piece_form_submitted = True
+    def handle_user_submit(self) -> None:
+        self.user_form_submitted = True
 
     async def welcome(
-        self, data: dict[str, Any]
+        self
     ) -> AsyncGenerator[None, None]:
-        self._user_name = data["piece_name"]
-        self._user_desc = data["piece_desc"]
         self.show_dialog = False
         yield
 
-        self.renderer_content = f"# {self._piece_name}\n\n{self._piece_desc}\n\n"
+        self.renderer_content = f"# {self.piece_name}\n\n{self.piece_desc}\n\n"
         yield
 
         config = RunnableConfig({"configurable": {"thread_id": "1"}})
@@ -169,10 +164,10 @@ class RWState(rx.State):  # type: ignore
             'msg': "",
         })
         async for event in graph.astream_events(
-            {"piece_name":  self._piece_name,
-             "piece_desc":  self._piece_desc,
-             "user_name":   self._user_name,
-             "user_desc":   self._user_desc,
+            {"piece_name":  self.piece_name,
+             "piece_desc":  self.piece_desc,
+             "user_name":   self.user_name,
+             "user_desc":   self.user_desc,
              "messages":    [], },
             config,
             version="v2"
@@ -226,7 +221,7 @@ class RWState(rx.State):  # type: ignore
                     yield
 
 
-def welcome_dialog() -> rx.Component:
+def welcome_dialog(self) -> rx.Component:
     return rx.dialog.root(
         rx.dialog.content(
             rx.vstack(
@@ -239,7 +234,44 @@ def welcome_dialog() -> rx.Component:
                         align="center"),
                 ),
                 rx.cond(
-                    ~RWState.piece_form_submitted,
+                    ~RWState.user_form_submitted,
+                    rx.form(
+                        rx.vstack(
+                            rx.text("If you would just tell me who you are.",
+                                    align="center",
+                                    color_scheme="blue",),
+                            rx.input(
+                                placeholder="Your own name here...",
+                                name="user_name",
+                                value=self.user_name,
+                                on_change=self.set_user_name
+                            ),
+                            rx.text_area(
+                                placeholder=user_desc_placeholder,
+                                style={
+                                    "& ::placeholder": {
+                                        "text-align": "justify"
+                                    },
+                                },
+                                rows="10",
+                                width="100%",
+                                name="user_desc",
+                                value=self.user_desc,
+                                on_change=self.set_user_desc
+                            ),
+                            rx.dialog.close(
+                                rx.button("begin", type="submit"),),
+                            spacing="3",
+                            justify="center",
+                            align="center",
+                        ),
+                        on_submit=RWState.handle_user_submit,
+                        #  for some reason,
+                        #  Reflex will serve the form data to
+                        #  the alternative one ('piece' form)
+                        #  if reset_on_submit is not set
+                        reset_on_submit=True,
+                    ),
                     rx.form(
                         rx.vstack(
                             rx.text("If you would just tell me which it is.",
@@ -248,6 +280,8 @@ def welcome_dialog() -> rx.Component:
                             rx.input(
                                 placeholder="Your piece name here...",
                                 name="piece_name",
+                                value=self.piece_name,
+                                on_change=self.set_piece_name
                             ),
                             rx.text_area(
                                 placeholder=piece_desc_placeholder,
@@ -259,40 +293,10 @@ def welcome_dialog() -> rx.Component:
                                 rows="10",
                                 width="100%",
                                 name="piece_desc",
+                                value=self.piece_desc,
+                                on_change=self.set_piece_desc
                             ),
-                            rx.button("begin", type="submit"),
-                            spacing="3",
-                            justify="center",
-                            align="center",
-                        ),
-                        on_submit=RWState.handle_piece_submit,
-                        # for some reason, Reflex will serve the form data to
-                        # the alternative one ('user' form) if reset_on_submit
-                        # is not set
-                        reset_on_submit=True,
-                    ),
-                    rx.form(
-                        rx.vstack(
-                            rx.text("If you would just tell me who you are.",
-                                    align="center",
-                                    color_scheme="blue",),
-                            rx.input(
-                                placeholder="Your own name here...",
-                                name="piece_name",
-                            ),
-                            rx.text_area(
-                                placeholder=user_desc_placeholder,
-                                style={
-                                    "& ::placeholder": {
-                                        "text-align": "justify"
-                                    },
-                                },
-                                rows="10",
-                                width="100%",
-                                name="piece_desc",
-                            ),
-                            rx.dialog.close(
-                                rx.button("truly begin now", type="submit"),),
+                            rx.button("truly begin now", type="submit"),
                             spacing="3",
                             justify="center",
                             align="center",
@@ -476,7 +480,7 @@ def app_content() -> rx.Component:
 def index() -> rx.Component:
     return rx.box(
         rx.color_mode.button(position="top-right"),
-        welcome_dialog(),
+        welcome_dialog(RWState),
         app_content(),
         width="100vw",
         height="100vh",
