@@ -1,9 +1,8 @@
 """Welcome to Reflex! This file outlines the steps to create a basic app."""
 
-from io import BytesIO
+import os
 from typing import Annotated, Any, AsyncGenerator
 from typing_extensions import TypedDict
-from PIL import Image  # type: ignore
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.aiosqlite import AsyncSqliteSaver
@@ -90,10 +89,24 @@ graph = graph_builder.compile(
     checkpointer=memory,
     interrupt_before=["user_action"]
 )
-
-# img_data = graph.get_graph().draw_mermaid_png()
-# img = Image.open(BytesIO(img_data))
-# img.show()
+if os.getenv("SHOW_GRAPH") == "true":
+    try:
+        from PIL import Image
+    except ImportError:
+        raise ImportError(
+            "Could not import PIL python package. "
+            "Please install it with `poetry add PIL."
+        )
+    try:
+        from io import BytesIO
+    except ImportError:
+        raise ImportError(
+            "Could not import BytesIO python package. "
+            "Please install it with `poetry add BytesIO."
+        )
+    img_data = graph.get_graph().draw_mermaid_png()
+    img = Image.open(BytesIO(img_data))
+    img.show()
 
 
 class RWState(rx.State):  # type: ignore
