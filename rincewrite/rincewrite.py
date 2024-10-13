@@ -89,20 +89,17 @@ graph = graph_builder.compile(
     checkpointer=memory,
     interrupt_before=["user_action"]
 )
+
+# Displays the graph LangGraph if 'SHOW_GRAPH' is true
+# in the environment variable
 if os.getenv("SHOW_GRAPH") == "true":
     try:
         from PIL import Image
-    except ImportError:
-        raise ImportError(
-            "Could not import PIL python package. "
-            "Please install it with `poetry add PIL."
-        )
-    try:
         from io import BytesIO
     except ImportError:
         raise ImportError(
-            "Could not import BytesIO python package. "
-            "Please install it with `poetry add BytesIO."
+            "Could not import PIL python package. "
+            "Please install it with `poetry install --with dev`."
         )
     img_data = graph.get_graph().draw_mermaid_png()
     img = Image.open(BytesIO(img_data))
