@@ -113,17 +113,18 @@ class RWState(rx.State):  # type: ignore
     # main app col 3/3 : render zone
     renderer_content: str = ""
 
-    # backend state
-    piece_name: str = rx.LocalStorage(name="piece_name")
-    piece_desc: str = rx.LocalStorage(name="piece_desc")
-    user_name: str = rx.LocalStorage(name="user_name")
-    user_desc: str = rx.LocalStorage(name="user_desc")
+    # local storage state
+    user_name: str = rx.LocalStorage()
+    user_desc: str = rx.LocalStorage()
+    piece_name: str = rx.LocalStorage()
+    piece_desc: str = rx.LocalStorage()
 
-    def handle_user_submit(self) -> None:
+    def handle_user_submit(self, data: dict[str, Any]) -> None:
         self.user_form_submitted = True
 
     async def welcome(
-        self
+        self,
+        data: dict[str, Any]
     ) -> AsyncGenerator[None, None]:
         self.show_dialog = False
         yield
@@ -221,7 +222,7 @@ class RWState(rx.State):  # type: ignore
                     yield
 
 
-def welcome_dialog(self) -> rx.Component:
+def welcome_dialog() -> rx.Component:
     return rx.dialog.root(
         rx.dialog.content(
             rx.vstack(
@@ -243,8 +244,8 @@ def welcome_dialog(self) -> rx.Component:
                             rx.input(
                                 placeholder="Your own name here...",
                                 name="user_name",
-                                value=self.user_name,
-                                on_change=self.set_user_name
+                                value=RWState.user_name,
+                                on_change=RWState.set_user_name
                             ),
                             rx.text_area(
                                 placeholder=user_desc_placeholder,
@@ -256,8 +257,8 @@ def welcome_dialog(self) -> rx.Component:
                                 rows="10",
                                 width="100%",
                                 name="user_desc",
-                                value=self.user_desc,
-                                on_change=self.set_user_desc
+                                value=RWState.user_desc,
+                                on_change=RWState.set_user_desc
                             ),
                             rx.dialog.close(
                                 rx.button("begin", type="submit"),),
@@ -280,8 +281,8 @@ def welcome_dialog(self) -> rx.Component:
                             rx.input(
                                 placeholder="Your piece name here...",
                                 name="piece_name",
-                                value=self.piece_name,
-                                on_change=self.set_piece_name
+                                value=RWState.piece_name,
+                                on_change=RWState.set_piece_name
                             ),
                             rx.text_area(
                                 placeholder=piece_desc_placeholder,
@@ -293,8 +294,8 @@ def welcome_dialog(self) -> rx.Component:
                                 rows="10",
                                 width="100%",
                                 name="piece_desc",
-                                value=self.piece_desc,
-                                on_change=self.set_piece_desc
+                                value=RWState.piece_desc,
+                                on_change=RWState.set_piece_desc
                             ),
                             rx.button("truly begin now", type="submit"),
                             spacing="3",
@@ -480,7 +481,7 @@ def app_content() -> rx.Component:
 def index() -> rx.Component:
     return rx.box(
         rx.color_mode.button(position="top-right"),
-        welcome_dialog(RWState),
+        welcome_dialog(),
         app_content(),
         width="100vw",
         height="100vh",
