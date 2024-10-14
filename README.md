@@ -6,6 +6,7 @@
 - [Installation](#installation)
 - [Usage](#usage)
 - [Development](#development)
+- [Design](#design)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -68,6 +69,11 @@ For developers wishing to contribute or work on advanced features, follow these 
 3. You can choose to display the LangGraph graph depending on the configuration:
     - If you have installed the development tools with `poetry install --with dev`, you can run the project with the graph display.
     - Otherwise, the project can be run without this option.
+
+## Design
+Below is a visual representation of the system design for **RinceWrite**:
+
+<!-- TODO: Ajouter l'image du graph -->
 
 ## Contributing
 Contributions are welcome! To propose changes, follow these steps:
