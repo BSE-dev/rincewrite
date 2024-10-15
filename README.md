@@ -76,13 +76,8 @@ Below is a visual representation of the system design for **RinceWrite**:
 <!-- TODO: Ajouter l'image du graph -->
 
 ## Contributing
-Contributions are welcome! To propose changes, follow these steps:
+We welcome contributions! For detailed guidelines on how to contribute to this project, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file included in this repository.
 
-1. Fork the project.
-2. Create a branch for your feature (`git checkout -b feature/NewFeature`).
-3. Commit your changes (`git commit -m 'Add a new feature'`).
-4. Push your branch (`git push origin feature/NewFeature`).
-5. Open a Pull Request.
 
 ## License
 This project is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.
