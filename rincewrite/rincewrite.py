@@ -3,9 +3,10 @@
 import os
 from typing import Annotated, Any, AsyncGenerator
 from typing_extensions import TypedDict
+from langchain_core.pydantic_v1 import BaseModel, Field
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.aiosqlite import AsyncSqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langchain_openai import ChatOpenAI
 from langchain import hub
 from langchain_core.messages.base import BaseMessage
@@ -13,8 +14,10 @@ from langchain_core.runnables import RunnableConfig
 import reflex as rx  # type: ignore
 # Reflex does not provide type hints at the moment
 
-model = ChatOpenAI(model='gpt-3.5-turbo', temperature=0.7, streaming=True)
-# model = ChatOpenAI(model='gpt-4o', temperature=0.7, streaming=True)
+model_name = "gpt-4o-mini"
+model = ChatOpenAI(model=model_name, temperature=0.7, streaming=True)
+
+SQLITE_CONN_STRING = "rincewrite.db"
 
 piece_desc_placeholder = "Your piece description here. Any description that \
 can help bootstrap the structuration of your piece is most welcome (title, \
@@ -29,11 +32,23 @@ adressed? ...). But don't waste too much time here: we will build this and \
 the rest along the way, together."
 
 
+class PieceUpdate(BaseModel):
+    new_title: str = Field(
+        ...,
+        title="New title for the piece")
+    new_desc: str = Field(
+        ...,
+        title="New description for the piece")
+    new_text: str = Field(
+        ...,
+        title="New text for the piece")
+
+
 class GraphState(TypedDict):
-    user_name: str
-    user_desc: str
-    piece_name: str
+    piece_title: str
     piece_desc: str
+    piece_text: str
+    piece_update: PieceUpdate
     messages: Annotated[list[BaseMessage], add_messages]
 
 
@@ -42,13 +57,20 @@ _welcome_prompt = hub.pull("rincewrite-welcome")
 _welcome_chain = _welcome_prompt | model
 
 
-async def _welcome(state: GraphState) -> dict[str, Any]:
+async def _welcome(
+    state: GraphState,
+    config: RunnableConfig
+) -> dict[str, Any]:
 
     welcome_msg = await _welcome_chain.ainvoke({
-        "piece_name":   state["piece_name"],
+        "user_name":    config["configurable"].get(
+            "user_name",
+            "UNKNOWN_USER"),
+        "user_desc":    config["configurable"].get(
+            "user_desc",
+            "NO_USER_DESC"),
+        "piece_title":   state["piece_title"],
         "piece_desc":   state["piece_desc"],
-        "user_name":    state["user_name"],
-        "user_desc":    state["user_desc"],
     })
 
     return {"messages": [welcome_msg]}
@@ -61,49 +83,101 @@ def _user_action(state: GraphState) -> None:
     pass
 
 
+# 'update_piece_text' Node
+_update_piece_prompt = hub.pull("rincewrite-update-piece")
+_update_piece_chain = _update_piece_prompt | model.with_structured_output(
+    PieceUpdate)
+
+
+async def _update_piece(
+    state: GraphState,
+    config: RunnableConfig
+) -> dict[str, Any]:
+    piece_update = await _update_piece_chain.ainvoke({
+        "user_name":    config["configurable"].get(
+            "user_name",
+            "UNKNOWN_USER"),
+        "user_desc":    config["configurable"].get(
+            "user_desc",
+            "NO_USER_DESC"),
+        "piece_title":   state["piece_title"],
+        "piece_desc":   state["piece_desc"],
+        "piece_text":   state["piece_text"],
+        "messages":     state["messages"],
+    })
+
+    return {
+        "piece_update": piece_update}
+
 # 'chat' Node
 _chat_prompt = hub.pull("rincewrite-chat")
 _chat_chain = _chat_prompt | model
 
 
-async def _chat(state: GraphState) -> dict[str, Any]:
+async def _chat(
+    state: GraphState,
+    config: RunnableConfig
+) -> dict[str, Any]:
 
-    chat_msg = await _chat_chain.ainvoke(state["messages"])
+    chat_msg = await _chat_chain.ainvoke({
+        "user_name":    config["configurable"].get(
+            "user_name",
+            "UNKNOWN_USER"),
+        "user_desc":    config["configurable"].get(
+            "user_desc",
+            "NO_USER_DESC"),
+        "piece_title":   state["piece_title"],
+        "piece_desc":   state["piece_desc"],
+        "piece_text":   state["piece_text"],
+        "messages":     state["messages"],
+        "new_piece_text": state["piece_update"].new_text,
+        "new_piece_title": state["piece_update"].new_title,
+        "new_piece_desc": state["piece_update"].new_desc,
+    })
 
-    return {"messages": [chat_msg]}
-
-
-# memory = SqliteSaver.from_conn_string(":memory:")
-memory = AsyncSqliteSaver.from_conn_string(":memory:")
+    return {
+        "piece_text": state["piece_update"].new_text,
+        "piece_title": state["piece_update"].new_title,
+        "piece_desc": state["piece_update"].new_desc,
+        "messages": [chat_msg]}
 
 graph_builder = StateGraph(GraphState)
 graph_builder.add_node("welcome", _welcome)
 graph_builder.add_node("user_action", _user_action)
+graph_builder.add_node("update_piece", _update_piece)
 graph_builder.add_node("chat", _chat)
 
 graph_builder.set_entry_point("welcome")
 graph_builder.add_edge("welcome", "user_action")
-graph_builder.add_edge("user_action", "chat")
+graph_builder.add_edge("user_action", "update_piece")
+graph_builder.add_edge("update_piece", "chat")
 graph_builder.add_edge("chat", "user_action")
-graph = graph_builder.compile(
-    checkpointer=memory,
-    interrupt_before=["user_action"]
-)
 
 # Displays the graph LangGraph if 'SHOW_GRAPH' is true
 # in the environment variable
 if os.getenv("SHOW_GRAPH") == "true":
     try:
-        from PIL import Image
+        from PIL import Image  # type: ignore
         from io import BytesIO
     except ImportError:
         raise ImportError(
             "Could not import PIL python package. "
             "Please install it with `poetry install --with dev`."
         )
-    img_data = graph.get_graph().draw_mermaid_png()
-    img = Image.open(BytesIO(img_data))
-    img.show()
+
+    async def display_graph():
+        async with AsyncSqliteSaver.from_conn_string(
+                SQLITE_CONN_STRING) as memory:
+            graph = graph_builder.compile(
+                checkpointer=memory,
+                interrupt_before=["user_action"]
+            )
+            img_data = graph.get_graph().draw_mermaid_png()
+            img = Image.open(BytesIO(img_data))
+            img.show()
+
+    import asyncio
+    asyncio.run(display_graph())
 
 
 class RWState(rx.State):  # type: ignore
@@ -126,7 +200,7 @@ class RWState(rx.State):  # type: ignore
     # local storage state
     user_name: str = rx.LocalStorage()
     user_desc: str = rx.LocalStorage()
-    piece_name: str = rx.LocalStorage()
+    piece_title: str = rx.LocalStorage()
     piece_desc: str = rx.LocalStorage()
 
     def handle_user_submit(self, data: dict[str, Any]) -> None:
@@ -139,58 +213,60 @@ class RWState(rx.State):  # type: ignore
         self.show_dialog = False
         yield
 
-        self.renderer_content = f"# {self.piece_name}\n\n{self.piece_desc}\n\n"
-        yield
-
-        config = RunnableConfig({"configurable": {"thread_id": "1"}})
-
-        # # direct call to the full graph
-        # res = graph.invoke({
-        #     "piece_name":  self._piece_name,
-        #     "piece_desc":  self._piece_desc,
-        #     "user_name":   self._user_name,
-        #     "user_desc":   self._user_desc,
-        #     "messages":    [],},
-        #     config)
-        # # do something
-
-        # # stream State
-        # for event in graph.stream({
-        #         "piece_name":   self._piece_name,
-        #         "piece_desc":   self._piece_desc,
-        #         "user_name":    self._user_name,
-        #         "user_desc":    self._user_desc,
-        #         "messages":     [], },
-        #         config):
-        #     for value in event.values():
-        #         self.messages.append({
-        #             'type': value["messages"][-1].type,
-        #             'msg': value["messages"][-1].content,
-        #         })
-        #         yield
-
         # stream LLM tokens
         self.messages.append({
             'type': "ai",
             'msg': "",
         })
-        async for event in graph.astream_events(
-            {"piece_name":  self.piece_name,
-             "piece_desc":  self.piece_desc,
-             "user_name":   self.user_name,
-             "user_desc":   self.user_desc,
-             "messages":    [], },
-            config,
-            version="v2"
-        ):
-            kind = event["event"]
-            # emitted for each streamed token
-            if kind == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
-                # only display non-empty content (not tool calls)
-                if content:
-                    self.messages[-1]["msg"] += content
-                    yield
+
+        config = RunnableConfig({
+            "configurable": {
+                "thread_id": self.user_name,
+                "user_name": self.user_name,
+                "user_desc": self.user_desc}
+        })
+        async with AsyncSqliteSaver.from_conn_string(
+                SQLITE_CONN_STRING) as memory:
+            graph = graph_builder.compile(
+                checkpointer=memory,
+                interrupt_before=["user_action"]
+            )
+
+            state_snapshot = await graph.aget_state(config)
+            last_state = state_snapshot.values
+            last_piece_text = ""
+            if last_state:
+                self.renderer_content = (
+                    f"# {last_state['piece_title']}\n\n"
+                    f"**{last_state['piece_desc']}**"
+                    f"\n\n{last_state['piece_text']}"
+                )
+                last_piece_text = last_state["piece_text"]
+            else:
+                self.renderer_content = (
+                    f"# {self.piece_title}\n\n"
+                    f"**{self.piece_desc}**"
+                )
+            yield
+
+            async for event in graph.astream_events(
+                {
+                    "piece_title":  self.piece_title,
+                    "piece_desc":  self.piece_desc,
+                    "piece_text":  last_piece_text,
+                    "messages":    [],
+                },
+                config,
+                version="v2"
+            ):
+                kind = event["event"]
+                # emitted for each streamed token
+                if kind == "on_chat_model_stream":
+                    content = event["data"]["chunk"].content
+                    # only display non-empty content (not tool calls)h
+                    if content:
+                        self.messages[-1]["msg"] += content
+                        yield
 
     async def handle_user_msg_submit(
         self,
@@ -198,38 +274,66 @@ class RWState(rx.State):  # type: ignore
     ) -> AsyncGenerator[None, None]:
         self.messages.append({"type": "user", "msg": data["text_area_input"]})
         yield
-        config = RunnableConfig({"configurable": {"thread_id": "1"}})
-        # manually update graph state
-        await graph.aupdate_state(
-            config,
-            {"messages": [data["text_area_input"]]},
-            as_node="user_action")
-        # # resume graph execution and stream state
-        # for event in graph.stream(None, config):
-        #     for value in event.values():
-        #         self.messages.append({
-        #             'type': value["messages"][-1].type,
-        #             'msg': value["messages"][-1].content,
-        #         })
-        #         yield
+
+        # manually update graph state with user message
+        config = RunnableConfig({
+            "configurable": {
+                "thread_id": self.user_name,
+                "user_name": self.user_name,
+                "user_desc": self.user_desc}
+        })
+        async with AsyncSqliteSaver.from_conn_string(
+                SQLITE_CONN_STRING) as memory:
+            # found no other way to associate the graph with the memory than
+            # through recompiling it
+            graph = graph_builder.compile(
+                checkpointer=memory,
+                interrupt_before=["user_action"]
+            )
+            await graph.aupdate_state(
+                config,
+                {"messages": [data["text_area_input"]]},
+                as_node="user_action")
+
         # resume graph execution and stream LLM tokens
         self.messages.append({
             'type': "ai",
             'msg': "",
         })
-        async for event in graph.astream_events(
-            None,
-            config,
-            version="v2"
-        ):
-            kind = event["event"]
-            # emitted for each streamed token
-            if kind == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
-                # only display non-empty content (not tool calls)
-                if content:
-                    self.messages[-1]["msg"] += content
-                    yield
+        async with AsyncSqliteSaver.from_conn_string(
+                SQLITE_CONN_STRING) as memory:
+            graph = graph_builder.compile(
+                checkpointer=memory,
+                interrupt_before=["user_action"]
+            )
+            async for event in graph.astream_events(
+                None,
+                config,
+                version="v2"
+            ):
+                kind = event["event"]
+                # emitted for each streamed token
+                if kind == "on_chat_model_stream":
+                    content = event["data"]["chunk"].content
+                    # only display non-empty content (not tool calls)
+                    if content:
+                        self.messages[-1]["msg"] += content
+                        yield
+                if kind == "on_chat_model_end":
+                    # using 'functions' / 'tools' / 'structured ouptut'
+                    # creates an event with tool_calls
+                    output = event["data"]["output"]
+                    if output.tool_calls:
+                        piece_update_dict = output.tool_calls[0]['args']
+                        piece_update = PieceUpdate(**piece_update_dict)
+                        self.set_piece_title(piece_update.new_title)
+                        self.set_piece_desc(piece_update.new_desc)
+                        self.renderer_content = (
+                            f"# {piece_update.new_title}\n\n"
+                            f"**{piece_update.new_desc}**\n\n"
+                            f"{piece_update.new_text}"
+                        )
+                yield
 
 
 def welcome_dialog() -> rx.Component:
@@ -289,10 +393,10 @@ def welcome_dialog() -> rx.Component:
                                     align="center",
                                     color_scheme="blue",),
                             rx.input(
-                                placeholder="Your piece name here...",
-                                name="piece_name",
-                                value=RWState.piece_name,
-                                on_change=RWState.set_piece_name
+                                placeholder="Your piece title here...",
+                                name="piece_title",
+                                value=RWState.piece_title,
+                                on_change=RWState.set_piece_title
                             ),
                             rx.text_area(
                                 placeholder=piece_desc_placeholder,
