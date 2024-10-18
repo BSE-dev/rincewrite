@@ -466,7 +466,6 @@ def app_content() -> rx.Component:
                         rx.markdown(
                             RWState.renderer_content,
                             width="98%",
-                            bg="green",
                         ),
                         width="100%",
                         height="100%",
@@ -475,7 +474,6 @@ def app_content() -> rx.Component:
                     scrollbars="vertical",
                     width="95%",
                     height="90%",
-                    bg="yellow",
                 ),
                 width="100%",
                 height="100%",
