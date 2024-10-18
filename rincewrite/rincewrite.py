@@ -153,32 +153,6 @@ graph_builder.add_edge("user_action", "update_piece")
 graph_builder.add_edge("update_piece", "chat")
 graph_builder.add_edge("chat", "user_action")
 
-# Displays the graph LangGraph if 'SHOW_GRAPH' is true
-# in the environment variable
-if os.getenv("SHOW_GRAPH") == "true":
-    try:
-        from PIL import Image  # type: ignore
-        from io import BytesIO
-    except ImportError:
-        raise ImportError(
-            "Could not import PIL python package. "
-            "Please install it with `poetry install --with dev`."
-        )
-
-    async def display_graph():
-        async with AsyncSqliteSaver.from_conn_string(
-                SQLITE_CONN_STRING) as memory:
-            graph = graph_builder.compile(
-                checkpointer=memory,
-                interrupt_before=["user_action"]
-            )
-            img_data = graph.get_graph().draw_mermaid_png()
-            img = Image.open(BytesIO(img_data))
-            img.show()
-
-    import asyncio
-    asyncio.run(display_graph())
-
 
 class RWState(rx.State):  # type: ignore
     """The app state."""
@@ -231,6 +205,21 @@ class RWState(rx.State):  # type: ignore
                 checkpointer=memory,
                 interrupt_before=["user_action"]
             )
+
+            # Displays the graph LangGraph if 'SHOW_GRAPH' is true
+            # in the environment variable
+            if os.getenv("SHOW_GRAPH") == "true":
+                try:
+                    from PIL import Image  # type: ignore
+                    from io import BytesIO
+                except ImportError:
+                    raise ImportError(
+                        "Could not import PIL python package. "
+                        "Please install it with `poetry install --with dev`."
+                    )
+                img_data = graph.get_graph().draw_mermaid_png()
+                img = Image.open(BytesIO(img_data))
+                img.show()
 
             state_snapshot = await graph.aget_state(config)
             last_state = state_snapshot.values
