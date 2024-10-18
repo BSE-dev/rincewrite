@@ -73,7 +73,7 @@ For developers wishing to contribute or work on advanced features, follow these 
 ## Design
 Below is a visual representation of the system design for **RinceWrite**:
 
-<!-- TODO: Ajouter l'image du graph -->
+![RinceWrite graph design](docs/rincewrite_design.png)
 
 ## Contributing
 We welcome contributions! For detailed guidelines on how to contribute to this project, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file included in this repository.
