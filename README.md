@@ -67,7 +67,7 @@ For developers wishing to contribute or work on advanced features, follow these 
 2. It is recommended to use **Visual Studio Code (VSCode)** as the IDE. Install the **Run and Debug** extension to run the Reflex project directly from the editor.
 
 3. You can choose to display the LangGraph graph depending on the configuration:
-    - If you have installed the development tools with `poetry install --with dev`, you can run the project with the graph display.
+    - If you have installed the development tools with `poetry install --with dev`, you can run the project with the graph display by running the 'Reflex App - Rincewrite with graph' configuration.
     - Otherwise, the project can be run without this option.
 
 ## Design
