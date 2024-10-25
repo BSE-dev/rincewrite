@@ -431,7 +431,7 @@ def chat_msg(msg: dict[str, str]) -> rx.Component:
     return rx.box(
         rx.markdown(
             msg["msg"],
-            background_color=rx.cond(
+            background=rx.cond(
                 msg["type"] == "user",
                 rx.color("mauve", 4),
                 rx.color("accent", 4)
