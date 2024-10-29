@@ -53,7 +53,7 @@ class GraphState(TypedDict):
 
 
 # 'welcome' Node
-_welcome_prompt = hub.pull("rincewrite-welcome")
+_welcome_prompt = hub.pull("bse-guirriecp/rincewrite-welcome:f1e53c7a")
 _welcome_chain = _welcome_prompt | model
 
 
@@ -84,7 +84,8 @@ def _user_action(state: GraphState) -> None:
 
 
 # 'update_piece_text' Node
-_update_piece_prompt = hub.pull("rincewrite-update-piece")
+_update_piece_prompt = hub.pull(
+    "bse-guirriecp/rincewrite-update_piece:c6ea9f37")
 _update_piece_chain = _update_piece_prompt | model.with_structured_output(
     PieceUpdate)
 
@@ -110,7 +111,7 @@ async def _update_piece(
         "piece_update": piece_update}
 
 # 'chat' Node
-_chat_prompt = hub.pull("rincewrite-chat")
+_chat_prompt = hub.pull("bse-guirriecp/rincewrite-chat:32bcac42")
 _chat_chain = _chat_prompt | model
 
 
