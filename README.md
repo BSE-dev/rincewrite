@@ -75,8 +75,16 @@ Below is a visual representation of the system design for **RinceWrite**:
 
 ![RinceWrite graph design](docs/rincewrite_design.png)
 
+
 ## Contributing
-We welcome contributions! For detailed guidelines on how to contribute to this project, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file included in this repository.
+Contributions are welcome! To propose changes, follow these steps:
+
+1. Fork the project.
+2. Create a branch for your feature (`git checkout -b feature/NewFeature`).
+3. Commit your changes (`git commit -m 'Add a new feature'`).
+4. Push your branch (`git push origin feature/NewFeature`).
+5. Open a Pull Request.
+
 
 
 ## License
